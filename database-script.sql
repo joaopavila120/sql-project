@@ -16,8 +16,8 @@ CREATE TABLE person(
     CREATED_AT DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE TABLE adress(
-	adress_id BIGINT PRIMARY KEY AUTO_INCREMENT,
+CREATE TABLE addresses(
+	address_id BIGINT PRIMARY KEY AUTO_INCREMENT,
     person_id BIGINT,
 	line1 VARCHAR(160) NOT NULL,
 	city VARCHAR(100) NOT NULL,
@@ -69,7 +69,7 @@ CREATE TABLE shipments(
   volume_m3 DECIMAL(12,3) NOT NULL DEFAULT 0,
    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   delivered_at DATETIME NULL,
-FOREIGN KEY (shipper_id) REFERENCES customers(customer_id),
+  FOREIGN KEY (shipper_id) REFERENCES person(person_id),
   FOREIGN KEY (origin_address_id) REFERENCES addresses(address_id),
   FOREIGN KEY (dest_address_id) REFERENCES addresses(address_id),
   INDEX idx_ship_dates (created_at, delivered_at)
