@@ -1,68 +1,52 @@
-CREATE TABLE categories (
-  category_id BIGINT PRIMARY KEY AUTO_INCREMENT,
-  name VARCHAR(120) NOT NULL UNIQUE
+-- TABLES
+
+CREATE TABLE person(
+	person_id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    name VARCHAR(160) NOT NULL,
+    email VARCHAR(180),
+    phone VARCHAR(40),
+    nif VARCHAR(10), -- PORTUGAL TAX ID 
+    CREATED_AT DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE TABLE products (
-  product_id BIGINT PRIMARY KEY AUTO_INCREMENT,
-  category_id BIGINT NOT NULL,
-  sku VARCHAR(60) NOT NULL UNIQUE,
-  name VARCHAR(160) NOT NULL,
-  unit VARCHAR(20) NOT NULL,
-  price DECIMAL(10,2) NOT NULL,
-  tax_rate DECIMAL(5,2) NOT NULL DEFAULT 23.00,
-  stock_qty DECIMAL(12,3) NOT NULL DEFAULT 0,
-  active TINYINT(1) NOT NULL DEFAULT 1,
-  FOREIGN KEY (category_id) REFERENCES categories(category_id)
-);
+CREATE TABLE adress(
+	adress_id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    person_id BIGINT,
+	line1 VARCHAR(160) NOT NULL,
+	city VARCHAR(100) NOT NULL,
+	region VARCHAR(100),
+	postal_code VARCHAR(20),
+	country VARCHAR(60) NOT NULL DEFAULT 'Portugal',
+	FOREIGN KEY (person_id) REFERENCES person(person_id)
+) ENGINE=InnoDB;
 
-CREATE TABLE suppliers (
-  supplier_id BIGINT PRIMARY KEY AUTO_INCREMENT,
-  name VARCHAR(150) NOT NULL,
-  email VARCHAR(180),
-  phone VARCHAR(40)
-);
+-- Drivers
+CREATE TABLE drivers (
+  person_id BIGINT PRIMARY KEY,
+  license_number VARCHAR(60) NOT NULL UNIQUE,
+  license_expires DATE NOT NULL,
+  active BOOLEAN NOT NULL DEFAULT TRUE,
+  FOREIGN KEY (person_id) REFERENCES person(person_id)
+) ENGINE=InnoDB;
 
-CREATE TABLE purchases (
-  purchase_id BIGINT PRIMARY KEY AUTO_INCREMENT,
-  supplier_id BIGINT NOT NULL,
-  purchased_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  FOREIGN KEY (supplier_id) REFERENCES suppliers(supplier_id)
-);
+-- vehicles
+CREATE TABLE vehicles(
+	vehicle_id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    plate VARCHAR(20) NOT NULL UNIQUE,
+    capacity_kg DECIMAL(12, 3) NOT NULL, 
+    capacity_m3 DECIMAL(12, 3) NOT NULL,
+    active BOOLEAN NOT NULL DEFAULT TRUE
+) ENGINE=InnoDB;
 
-CREATE TABLE purchase_items (
-  purchase_item_id BIGINT PRIMARY KEY AUTO_INCREMENT,
-  purchase_id BIGINT NOT NULL,
-  product_id BIGINT NOT NULL,
-  qty DECIMAL(12,3) NOT NULL,
-  unit_cost DECIMAL(10,2) NOT NULL,
-  FOREIGN KEY (purchase_id) REFERENCES purchases(purchase_id),
-  FOREIGN KEY (product_id)  REFERENCES products(product_id)
-);
 
-CREATE TABLE sales (
-  sale_id BIGINT PRIMARY KEY AUTO_INCREMENT,
-  opened_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  closed_at DATETIME,
-  status ENUM('OPEN','PAID','CANCELLED') NOT NULL DEFAULT 'OPEN'
-);
+CREATE TABLE product_types (
+  product_type_id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  name VARCHAR(80) NOT NULL UNIQUE,   -- ex.: 'Refrigerated', 'Hazmat', 'Express'
+  insurance_rate DECIMAL(8,5) NOT NULL DEFAULT 0 -- % sobre declared_value (ex.: 0.005 = 0.5%)
+) ENGINE=InnoDB;
 
-CREATE TABLE sale_items (
-  sale_item_id BIGINT PRIMARY KEY AUTO_INCREMENT,
-  sale_id BIGINT NOT NULL,
-  product_id BIGINT NOT NULL,
-  qty DECIMAL(12,3) NOT NULL,
-  unit_price DECIMAL(10,2) NOT NULL,
-  tax_rate DECIMAL(5,2) NOT NULL,
-  FOREIGN KEY (sale_id)    REFERENCES sales(sale_id),
-  FOREIGN KEY (product_id) REFERENCES products(product_id)
-);
-
-CREATE TABLE payments (
-  payment_id BIGINT PRIMARY KEY AUTO_INCREMENT,
-  sale_id BIGINT NOT NULL,
-  method ENUM('CASH','CARD','PIX_MBWAY') NOT NULL,
-  amount DECIMAL(10,2) NOT NULL,
-  paid_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  FOREIGN KEY (sale_id) REFERENCES sales(sale_id)
-);
+INSERT INTO product_types (name, insurance_rate) VALUES
+('Standard',     0.0000),
+('Refrigerated',  0.0020),
+('Hazmat',        0.0050),
+('Express',       0.0000);
