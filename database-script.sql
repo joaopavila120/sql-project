@@ -1,252 +1,405 @@
 DROP DATABASE IF EXISTS coffee_ecommerce;
-CREATE DATABASE coffee_ecommerce
-  CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;
+CREATE DATABASE coffee_ecommerce CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;
 USE coffee_ecommerce;
 
+/* =============================================================================
+   SECTION 1: DATABASE SCHEMA DEFINITION
+   ============================================================================= */
+
+/* -----------------------------------------------------------------------------
+   TABLE: users
+   DESCRIPTION: Stores user account information including login credentials and profile data.
+   COLUMNS:
+     user_id: Unique identifier for the user (BIGINT for scalability)
+     email: User email address, used for login
+     password_hash: Hashed password for security
+     full_name: Full name of the user
+     phone: Contact phone number
+     created_at: Timestamp when the user was created
+   ----------------------------------------------------------------------------- */
 CREATE TABLE users (
   user_id        BIGINT PRIMARY KEY AUTO_INCREMENT,
-  email          VARCHAR(180) NOT NULL UNIQUE,
+  email          VARCHAR(150) NOT NULL UNIQUE,
   password_hash  VARCHAR(255) NOT NULL,
-  role           ENUM('ADMIN','CUSTOMER') NOT NULL DEFAULT 'CUSTOMER',
+  full_name      VARCHAR(100) NOT NULL,
+  phone          VARCHAR(20),
+  created_at     DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB;
+
+/* -----------------------------------------------------------------------------
+   TABLE: countries
+   DESCRIPTION: Lookup table for countries.
+   COLUMNS:
+     country_code: ISO 3166-1 alpha-2 country code (e.g., PT, US)
+     name: Full name of the country
+   ----------------------------------------------------------------------------- */
+CREATE TABLE countries (
+  country_code   CHAR(2) PRIMARY KEY,
+  name           VARCHAR(50) NOT NULL UNIQUE
+) ENGINE=InnoDB;
+
+/* -----------------------------------------------------------------------------
+   TABLE: addresses
+   DESCRIPTION: Stores user shipping and billing addresses.
+   COLUMNS:
+     address_id: Unique identifier for the address
+     user_id: Foreign key linking to the user
+     street: Street address including number
+     city: City name
+     postal_code: Postal or ZIP code
+     country_code: Foreign key linking to the country
+     is_default: Flag indicating if this is the default address
+   ----------------------------------------------------------------------------- */
+CREATE TABLE addresses (
+  address_id     BIGINT PRIMARY KEY AUTO_INCREMENT,
+  user_id        BIGINT NOT NULL,
+  street         VARCHAR(150) NOT NULL,
+  city           VARCHAR(100) NOT NULL,
+  postal_code    VARCHAR(20) NOT NULL,
+  country_code   CHAR(2) NOT NULL DEFAULT 'PT',
+  is_default     BOOLEAN NOT NULL DEFAULT FALSE,
+  FOREIGN KEY (user_id) REFERENCES users(user_id),
+  FOREIGN KEY (country_code) REFERENCES countries(country_code)
+) ENGINE=InnoDB;
+
+/* -----------------------------------------------------------------------------
+   TABLE: categories
+   DESCRIPTION: Product categories for organization (e.g., Coffee, Equipment).
+   COLUMNS:
+     category_id: Unique identifier for the category
+     name: Name of the category
+     description: Short description of the category
+   ----------------------------------------------------------------------------- */
+CREATE TABLE categories (
+  category_id    BIGINT PRIMARY KEY AUTO_INCREMENT,
+  name           VARCHAR(100) NOT NULL UNIQUE,
+  description    VARCHAR(255)
+) ENGINE=InnoDB;
+
+/* -----------------------------------------------------------------------------
+   TABLE: brands
+   DESCRIPTION: Brands or manufacturers of products.
+   COLUMNS:
+     brand_id: Unique identifier for the brand
+     name: Brand name
+     country_code: Foreign key linking to the country of origin
+   ----------------------------------------------------------------------------- */
+CREATE TABLE brands (
+  brand_id       BIGINT PRIMARY KEY AUTO_INCREMENT,
+  name           VARCHAR(100) NOT NULL UNIQUE,
+  country_code   CHAR(2),
+  FOREIGN KEY (country_code) REFERENCES countries(country_code)
+) ENGINE=InnoDB;
+
+/* -----------------------------------------------------------------------------
+   TABLE: products
+   DESCRIPTION: Main product catalog.
+   COLUMNS:
+     product_id: Unique identifier for the product
+     category_id: Foreign key linking to the category
+     brand_id: Foreign key linking to the brand
+     name: Name of the product
+     description: Detailed description of the product
+     price: Price of the product in EUR (DECIMAL for financial precision)
+     stock_quantity: Current stock level
+     is_active: Flag indicating if the product is available for sale
+     created_at: Timestamp when the product was added
+   ----------------------------------------------------------------------------- */
+CREATE TABLE products (
+  product_id     BIGINT PRIMARY KEY AUTO_INCREMENT,
+  category_id    BIGINT NOT NULL,
+  brand_id       BIGINT,
+  name           VARCHAR(150) NOT NULL,
+  description    TEXT,
+  price          DECIMAL(10,2) NOT NULL,
+  stock_quantity INT NOT NULL DEFAULT 0,
   is_active      BOOLEAN NOT NULL DEFAULT TRUE,
   created_at     DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  last_login_at  DATETIME NULL
+  FOREIGN KEY (category_id)    REFERENCES categories(category_id),
+  FOREIGN KEY (brand_id)       REFERENCES brands(brand_id)
 ) ENGINE=InnoDB;
 
-CREATE TABLE customers (
-  customer_id    BIGINT PRIMARY KEY AUTO_INCREMENT,
-  user_id        BIGINT NOT NULL UNIQUE,
-  full_name      VARCHAR(160) NOT NULL,
-  phone          VARCHAR(40),
-  tax_number     VARCHAR(32),
-  date_of_birth  DATE,
-  created_at     DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  FOREIGN KEY (user_id) REFERENCES users(user_id)
-) ENGINE=InnoDB;
-
-CREATE TABLE addresses (
-  address_id    BIGINT PRIMARY KEY AUTO_INCREMENT,
-  customer_id   BIGINT NOT NULL,
-  line1         VARCHAR(160) NOT NULL,
-  line2         VARCHAR(160),
-  city          VARCHAR(100) NOT NULL,
-  region        VARCHAR(100),
-  postal_code   VARCHAR(20),
-  country       VARCHAR(60) NOT NULL DEFAULT 'Portugal',
-  address_type  ENUM('BILLING','SHIPPING','BOTH') NOT NULL DEFAULT 'SHIPPING',
-  is_default    BOOLEAN NOT NULL DEFAULT FALSE,
-  FOREIGN KEY (customer_id) REFERENCES customers(customer_id),
-  INDEX idx_addresses_customer (customer_id)
-) ENGINE=InnoDB;
-
-CREATE TABLE product_categories (
-  category_id          BIGINT PRIMARY KEY AUTO_INCREMENT,
-  name                 VARCHAR(120) NOT NULL UNIQUE,
-  description          VARCHAR(255),
-  parent_category_id   BIGINT NULL,
-  FOREIGN KEY (parent_category_id) REFERENCES product_categories(category_id)
-) ENGINE=InnoDB;
-
-CREATE TABLE brands (
-  brand_id     BIGINT PRIMARY KEY AUTO_INCREMENT,
-  name         VARCHAR(120) NOT NULL UNIQUE,
-  description  VARCHAR(255),
-  country      VARCHAR(80)
-) ENGINE=InnoDB;
-
-CREATE TABLE coffee_types (
-  coffee_type_id  BIGINT PRIMARY KEY AUTO_INCREMENT,
-  name            VARCHAR(120) NOT NULL UNIQUE,
-  description     VARCHAR(255)
-) ENGINE=InnoDB;
-
-CREATE TABLE products (
-  product_id        BIGINT PRIMARY KEY AUTO_INCREMENT,
-  category_id       BIGINT NOT NULL,
-  brand_id          BIGINT,
-  coffee_type_id    BIGINT,
-  name              VARCHAR(160) NOT NULL,
-  description       TEXT,
-  price_eur         DECIMAL(10,2) NOT NULL CHECK (price_eur >= 0),
-  sku               VARCHAR(64) UNIQUE,
-  weight_grams      INT,
-  is_coffee         BOOLEAN NOT NULL DEFAULT TRUE,
-  is_active         BOOLEAN NOT NULL DEFAULT TRUE,
-  created_at        DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  updated_at        DATETIME NULL,
-  FOREIGN KEY (category_id)    REFERENCES product_categories(category_id),
-  FOREIGN KEY (brand_id)       REFERENCES brands(brand_id),
-  FOREIGN KEY (coffee_type_id) REFERENCES coffee_types(coffee_type_id),
-  INDEX idx_products_category (category_id),
-  INDEX idx_products_active (is_active)
-) ENGINE=InnoDB;
-
-CREATE TABLE stock (
-  stock_id          BIGINT PRIMARY KEY AUTO_INCREMENT,
-  product_id        BIGINT NOT NULL UNIQUE,
-  quantity          INT NOT NULL DEFAULT 0 CHECK (quantity >= 0),
-  reserved_quantity INT NOT NULL DEFAULT 0 CHECK (reserved_quantity >= 0),
-  updated_at        DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+/* -----------------------------------------------------------------------------
+   TABLE: product_attributes
+   DESCRIPTION: Stores specific attributes for products (e.g., Roast, Voltage).
+   COLUMNS:
+     attribute_id: Unique identifier for the attribute
+     product_id: Foreign key linking to the product
+     attribute_name: Name of the attribute (e.g., 'Roast Level')
+     attribute_value: Value of the attribute (e.g., 'Dark')
+   ----------------------------------------------------------------------------- */
+CREATE TABLE product_attributes (
+  attribute_id   BIGINT PRIMARY KEY AUTO_INCREMENT,
+  product_id     BIGINT NOT NULL,
+  attribute_name VARCHAR(50) NOT NULL,
+  attribute_value VARCHAR(100) NOT NULL,
   FOREIGN KEY (product_id) REFERENCES products(product_id)
 ) ENGINE=InnoDB;
 
-CREATE TABLE discount_coupons (
-  coupon_id        BIGINT PRIMARY KEY AUTO_INCREMENT,
-  code             VARCHAR(60) NOT NULL UNIQUE,
-  description      VARCHAR(255),
-  discount_type    ENUM('PERCENTAGE','FIXED') NOT NULL,
-  discount_value   DECIMAL(10,2) NOT NULL CHECK (discount_value >= 0),
-  max_uses         INT,
-  times_used       INT NOT NULL DEFAULT 0 CHECK (times_used >= 0),
-  valid_from       DATETIME,
-  valid_to         DATETIME,
-  min_order_value  DECIMAL(10,2),
-  is_active        BOOLEAN NOT NULL DEFAULT TRUE
+/* -----------------------------------------------------------------------------
+   TABLE: coupons
+   DESCRIPTION: Discount coupons for promotions.
+   COLUMNS:
+     coupon_id: Unique identifier for the coupon
+     code: Discount code entered by the user
+     discount_val: Value of the discount
+     discount_type: Type of discount (fixed amount or percentage)
+     valid_until: Expiration date of the coupon
+     is_active: Flag indicating if the coupon is currently valid
+   ----------------------------------------------------------------------------- */
+CREATE TABLE coupons (
+  coupon_id      BIGINT PRIMARY KEY AUTO_INCREMENT,
+  code           VARCHAR(50) NOT NULL UNIQUE,
+  discount_val   DECIMAL(10,2) NOT NULL,
+  discount_type  ENUM('FIXED','PERCENTAGE') NOT NULL,
+  valid_until    DATETIME,
+  is_active      BOOLEAN NOT NULL DEFAULT TRUE
 ) ENGINE=InnoDB;
 
+/* -----------------------------------------------------------------------------
+   TABLE: orders
+   DESCRIPTION: Stores customer orders and their status.
+   COLUMNS:
+     order_id: Unique identifier for the order
+     user_id: Foreign key linking to the user who placed the order
+     address_id: Foreign key linking to the shipping address
+     coupon_id: Foreign key linking to the applied coupon (optional)
+     status: Current status of the order
+     payment_method: Method used for payment
+     payment_ref: External reference ID from the payment provider
+     carrier_name: Name of the shipping carrier
+     tracking_code: Tracking code for the shipment
+     created_at: Timestamp when the order was placed
+   ----------------------------------------------------------------------------- */
 CREATE TABLE orders (
-  order_id             BIGINT PRIMARY KEY AUTO_INCREMENT,
-  customer_id          BIGINT NOT NULL,
-  billing_address_id   BIGINT NOT NULL,
-  shipping_address_id  BIGINT NOT NULL,
-  coupon_id            BIGINT,
-  order_date           DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  status               ENUM('PENDING','PAID','SHIPPED','DELIVERED','CANCELLED') NOT NULL DEFAULT 'PENDING',
-  subtotal_eur         DECIMAL(12,2) NOT NULL DEFAULT 0 CHECK (subtotal_eur >= 0),
-  discount_total_eur   DECIMAL(12,2) NOT NULL DEFAULT 0 CHECK (discount_total_eur >= 0),
-  shipping_fee_eur     DECIMAL(12,2) NOT NULL DEFAULT 0 CHECK (shipping_fee_eur >= 0),
-  total_eur            DECIMAL(12,2) NOT NULL DEFAULT 0 CHECK (total_eur >= 0),
-  created_at           DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  FOREIGN KEY (customer_id)          REFERENCES customers(customer_id),
-  FOREIGN KEY (billing_address_id)   REFERENCES addresses(address_id),
-  FOREIGN KEY (shipping_address_id)  REFERENCES addresses(address_id),
-  FOREIGN KEY (coupon_id)            REFERENCES discount_coupons(coupon_id),
-  INDEX idx_orders_customer (customer_id),
-  INDEX idx_orders_status_date (status, order_date)
-) ENGINE=InnoDB;
-
-CREATE TABLE order_items (
-  order_item_id    BIGINT PRIMARY KEY AUTO_INCREMENT,
-  order_id         BIGINT NOT NULL,
-  product_id       BIGINT NOT NULL,
-  quantity         INT NOT NULL CHECK (quantity > 0),
-  unit_price_eur   DECIMAL(10,2) NOT NULL CHECK (unit_price_eur >= 0),
-  line_total_eur   DECIMAL(12,2) GENERATED ALWAYS AS (quantity * unit_price_eur) STORED,
-  FOREIGN KEY (order_id)   REFERENCES orders(order_id),
-  FOREIGN KEY (product_id) REFERENCES products(product_id),
-  INDEX idx_order_items_order (order_id),
-  INDEX idx_order_items_product (product_id)
-) ENGINE=InnoDB;
-
-CREATE TABLE payments (
-  payment_id      BIGINT PRIMARY KEY AUTO_INCREMENT,
-  order_id        BIGINT NOT NULL,
-  payment_method  ENUM('CREDIT_CARD','PAYPAL','MBWAY','BANK_TRANSFER') NOT NULL,
-  amount_eur      DECIMAL(12,2) NOT NULL CHECK (amount_eur >= 0),
-  status          ENUM('PENDING','AUTHORIZED','PAID','FAILED','REFUNDED') NOT NULL DEFAULT 'PENDING',
-  transaction_ref VARCHAR(120),
-  payment_date    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  FOREIGN KEY (order_id) REFERENCES orders(order_id),
-  INDEX idx_payments_order (order_id),
-  INDEX idx_payments_status (status)
-) ENGINE=InnoDB;
-
-CREATE TABLE carriers (
-  carrier_id   BIGINT PRIMARY KEY AUTO_INCREMENT,
-  name         VARCHAR(160) NOT NULL,
-  phone        VARCHAR(40),
-  website_url  VARCHAR(255),
-  is_active    BOOLEAN NOT NULL DEFAULT TRUE
-) ENGINE=InnoDB;
-
-CREATE TABLE shipments (
-  shipment_id      BIGINT PRIMARY KEY AUTO_INCREMENT,
-  order_id         BIGINT NOT NULL,
-  carrier_id       BIGINT NOT NULL,
-  tracking_code    VARCHAR(120),
-  status           ENUM('PENDING','SHIPPED','IN_TRANSIT','DELIVERED','RETURNED','CANCELLED') NOT NULL DEFAULT 'PENDING',
-  shipped_at       DATETIME,
-  delivered_at     DATETIME,
-  shipping_cost_eur DECIMAL(10,2) NOT NULL DEFAULT 0 CHECK (shipping_cost_eur >= 0),
-  FOREIGN KEY (order_id)   REFERENCES orders(order_id),
-  FOREIGN KEY (carrier_id) REFERENCES carriers(carrier_id),
-  INDEX idx_shipments_order (order_id),
-  INDEX idx_shipments_status (status)
-) ENGINE=InnoDB;
-
-CREATE TABLE product_reviews (
-  review_id     BIGINT PRIMARY KEY AUTO_INCREMENT,
-  product_id    BIGINT NOT NULL,
-  customer_id   BIGINT NOT NULL,
-  rating        TINYINT NOT NULL CHECK (rating BETWEEN 1 AND 5),
-  title         VARCHAR(160),
-  comment       VARCHAR(1000),
-  created_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  is_approved   BOOLEAN NOT NULL DEFAULT TRUE,
-  FOREIGN KEY (product_id)  REFERENCES products(product_id),
-  FOREIGN KEY (customer_id) REFERENCES customers(customer_id),
-  INDEX idx_reviews_product (product_id),
-  INDEX idx_reviews_customer (customer_id),
-  INDEX idx_reviews_rating (rating)
-) ENGINE=InnoDB;
-
-CREATE TABLE shopping_carts (
-  cart_id      BIGINT PRIMARY KEY AUTO_INCREMENT,
-  customer_id  BIGINT NOT NULL,
-  status       ENUM('OPEN','CONVERTED','ABANDONED') NOT NULL DEFAULT 'OPEN',
-  created_at   DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  updated_at   DATETIME NULL,
-  FOREIGN KEY (customer_id) REFERENCES customers(customer_id),
-  INDEX idx_carts_customer_status (customer_id, status)
-) ENGINE=InnoDB;
-
-CREATE TABLE shopping_cart_items (
-  cart_item_id   BIGINT PRIMARY KEY AUTO_INCREMENT,
-  cart_id        BIGINT NOT NULL,
-  product_id     BIGINT NOT NULL,
-  quantity       INT NOT NULL CHECK (quantity > 0),
-  added_at       DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  FOREIGN KEY (cart_id)    REFERENCES shopping_carts(cart_id),
-  FOREIGN KEY (product_id) REFERENCES products(product_id),
-  UNIQUE KEY uk_cart_product (cart_id, product_id)
-) ENGINE=InnoDB;
-
-CREATE TABLE favorites (
-  favorite_id   BIGINT PRIMARY KEY AUTO_INCREMENT,
-  customer_id   BIGINT NOT NULL,
-  product_id    BIGINT NOT NULL,
-  created_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  FOREIGN KEY (customer_id) REFERENCES customers(customer_id),
-  FOREIGN KEY (product_id)  REFERENCES products(product_id),
-  UNIQUE KEY uk_favorites_customer_product (customer_id, product_id)
-) ENGINE=InnoDB;
-
-CREATE TABLE access_logs (
-  access_log_id  BIGINT PRIMARY KEY AUTO_INCREMENT,
-  user_id        BIGINT,
-  ip_address     VARCHAR(45),
-  user_agent     VARCHAR(255),
-  request_path   VARCHAR(255),
-  http_method    VARCHAR(10),
-  success        BOOLEAN NOT NULL DEFAULT TRUE,
-  created_at     DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  FOREIGN KEY (user_id) REFERENCES users(user_id),
-  INDEX idx_access_logs_user (user_id),
-  INDEX idx_access_logs_created (created_at)
-) ENGINE=InnoDB;
-
-CREATE TABLE transaction_logs (
-  transaction_log_id  BIGINT PRIMARY KEY AUTO_INCREMENT,
-  order_id            BIGINT,
-  payment_id          BIGINT,
-  user_id             BIGINT,
-  log_type            ENUM('ORDER_STATUS','PAYMENT_STATUS','STOCK_CHANGE','COUPON','OTHER') NOT NULL,
-  old_value           VARCHAR(1000),
-  new_value           VARCHAR(1000),
-  message             VARCHAR(1000),
-  created_at          DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  FOREIGN KEY (order_id)   REFERENCES orders(order_id),
-  FOREIGN KEY (payment_id) REFERENCES payments(payment_id),
+  order_id         BIGINT PRIMARY KEY AUTO_INCREMENT,
+  user_id          BIGINT NOT NULL,
+  address_id       BIGINT NOT NULL,
+  coupon_id        BIGINT,
+  status           ENUM('PENDING','PAID','SHIPPED','DELIVERED','CANCELLED') NOT NULL DEFAULT 'PENDING',
+  payment_method   ENUM('CREDIT_CARD','PAYPAL','MBWAY') NOT NULL,
+  payment_ref      VARCHAR(100),
+  carrier_name     VARCHAR(100),
+  tracking_code    VARCHAR(100),
+  created_at       DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (user_id)    REFERENCES users(user_id),
-  INDEX idx_tx_logs_type_created (log_type, created_at)
+  FOREIGN KEY (address_id) REFERENCES addresses(address_id),
+  FOREIGN KEY (coupon_id)  REFERENCES coupons(coupon_id)
 ) ENGINE=InnoDB;
+
+/* -----------------------------------------------------------------------------
+   TABLE: order_items
+   DESCRIPTION: Individual items within an order.
+   COLUMNS:
+     order_item_id: Unique identifier for the order item
+     order_id: Foreign key linking to the order
+     product_id: Foreign key linking to the product
+     quantity: Quantity of the product ordered
+     unit_price: Price per unit at the time of purchase
+   ----------------------------------------------------------------------------- */
+CREATE TABLE order_items (
+  order_item_id  BIGINT PRIMARY KEY AUTO_INCREMENT,
+  order_id       BIGINT NOT NULL,
+  product_id     BIGINT NOT NULL,
+  quantity       INT NOT NULL,
+  unit_price     DECIMAL(10,2) NOT NULL,
+  FOREIGN KEY (order_id)   REFERENCES orders(order_id),
+  FOREIGN KEY (product_id) REFERENCES products(product_id)
+) ENGINE=InnoDB;
+
+/* -----------------------------------------------------------------------------
+   TABLE: reviews
+   DESCRIPTION: Product reviews submitted by users.
+   COLUMNS:
+     review_id: Unique identifier for the review
+     product_id: Foreign key linking to the product
+     user_id: Foreign key linking to the user
+     rating: Rating given by the user (1-5)
+     comment: Textual comment for the review
+     created_at: Timestamp when the review was created
+   ----------------------------------------------------------------------------- */
+CREATE TABLE reviews (
+  review_id      BIGINT PRIMARY KEY AUTO_INCREMENT,
+  product_id     BIGINT NOT NULL,
+  user_id        BIGINT NOT NULL,
+  rating         TINYINT NOT NULL CHECK (rating BETWEEN 1 AND 5),
+  comment        TEXT,
+  created_at     DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (product_id) REFERENCES products(product_id),
+  FOREIGN KEY (user_id)    REFERENCES users(user_id)
+) ENGINE=InnoDB;
+
+/* -----------------------------------------------------------------------------
+   TABLE: transaction_logs
+   DESCRIPTION: Audit trail for critical system transactions.
+   COLUMNS:
+     log_id: Unique identifier for the log entry
+     order_id: Foreign key linking to the related order (optional)
+     user_id: Foreign key linking to the user who performed the action (optional)
+     action_type: Type of action (e.g., PAYMENT_SUCCESS, ORDER_CANCELLED)
+     description: Detailed description of the event
+     log_date: Timestamp when the event occurred
+   ----------------------------------------------------------------------------- */
+CREATE TABLE transaction_logs (
+  log_id         BIGINT PRIMARY KEY AUTO_INCREMENT,
+  order_id       BIGINT,
+  user_id        BIGINT,
+  action_type    VARCHAR(50) NOT NULL,
+  description    TEXT,
+  log_date       DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (order_id) REFERENCES orders(order_id),
+  FOREIGN KEY (user_id)  REFERENCES users(user_id)
+) ENGINE=InnoDB;
+
+
+/* =============================================================================
+   SECTION 2: DUMMY DATA GENERATION
+   ============================================================================= */
+
+-- 1. Countries
+INSERT INTO countries (country_code, name) VALUES
+('PT', 'Portugal'),
+('US', 'United States'),
+('BR', 'Brazil'),
+('ES', 'Spain'),
+('FR', 'France'),
+('JP', 'Japan');
+
+-- 2. Users (5 users)
+INSERT INTO users (email, password_hash, full_name, phone, created_at) VALUES
+('john.doe@example.com', 'hash123', 'John Doe', '+351912345678', DATE_SUB(NOW(), INTERVAL 2 YEAR)),
+('jane.smith@example.com', 'hash456', 'Jane Smith', '+15550199', DATE_SUB(NOW(), INTERVAL 23 MONTH)),
+('alice.jones@example.com', 'hash789', 'Alice Jones', '+351933333333', DATE_SUB(NOW(), INTERVAL 20 MONTH)),
+('bob.brown@example.com', 'hashabc', 'Bob Brown', '+351966666666', DATE_SUB(NOW(), INTERVAL 18 MONTH)),
+('charlie.black@example.com', 'hashxyz', 'Charlie Black', '+33123456789', DATE_SUB(NOW(), INTERVAL 1 YEAR));
+
+-- 3. Addresses
+INSERT INTO addresses (user_id, street, city, postal_code, country_code, is_default) VALUES
+(1, 'Rua da Liberdade 123', 'Lisbon', '1000-001', 'PT', TRUE),
+(2, '123 Main St', 'New York', '10001', 'US', TRUE),
+(3, 'Avenida dos Aliados 45', 'Porto', '4000-001', 'PT', TRUE),
+(4, 'Rua de Santa Catarina 88', 'Porto', '4000-002', 'PT', TRUE),
+(5, '10 Rue de Rivoli', 'Paris', '75001', 'FR', TRUE);
+
+-- 4. Categories
+INSERT INTO categories (name, description) VALUES
+('Coffee Beans', 'Whole bean and ground coffee from around the world'),
+('Equipment', 'Espresso machines, grinders, and brewing gear'),
+('Accessories', 'Filters, cups, and maintenance tools');
+
+-- 5. Brands
+INSERT INTO brands (name, country_code) VALUES
+('Delta', 'PT'),
+('Hario', 'JP'),
+('Sage', 'US'),
+('Oatlys', 'US');
+
+-- 6. Products
+INSERT INTO products (category_id, brand_id, name, description, price, stock_quantity) VALUES
+(1, 1, 'Delta Gold Blend', 'Smooth and balanced blend.', 15.50, 100),
+(1, 1, 'Delta Platinum Roast', 'Intense dark roast.', 18.00, 80),
+(2, 2, 'Hario V60 Dripper', 'Ceramic coffee dripper size 02.', 25.00, 50),
+(2, 3, 'Sage Barista Express', 'All-in-one espresso machine.', 599.99, 10),
+(3, 2, 'Hario Paper Filters', 'Pack of 100 filters.', 8.50, 200);
+
+-- 7. Product Attributes
+INSERT INTO product_attributes (product_id, attribute_name, attribute_value) VALUES
+(1, 'Roast', 'Medium'), (1, 'Origin', 'Blend'),
+(2, 'Roast', 'Dark'), (2, 'Origin', 'Blend'),
+(3, 'Material', 'Ceramic'), (3, 'Color', 'White'),
+(4, 'Voltage', '220V'), (4, 'Color', 'Stainless Steel'),
+(5, 'Size', '02'), (5, 'Count', '100');
+
+-- 8. Coupons
+INSERT INTO coupons (code, discount_val, discount_type, valid_until) VALUES
+('WELCOME10', 10.00, 'PERCENTAGE', DATE_ADD(NOW(), INTERVAL 1 YEAR)),
+('SUMMER5', 5.00, 'FIXED', DATE_ADD(NOW(), INTERVAL 6 MONTH));
+
+-- 9. Orders (30 rows spread over 2 years)
+-- We will generate 30 orders.
+-- IDs 1-10: Year 1
+-- IDs 11-20: Year 2 (First Half)
+-- IDs 21-30: Year 2 (Recent)
+
+INSERT INTO orders (user_id, address_id, coupon_id, status, payment_method, created_at) VALUES
+-- Year 1 (Oldest)
+(1, 1, NULL, 'DELIVERED', 'CREDIT_CARD', DATE_SUB(NOW(), INTERVAL 700 DAY)),
+(2, 2, 1, 'DELIVERED', 'PAYPAL', DATE_SUB(NOW(), INTERVAL 680 DAY)),
+(3, 3, NULL, 'DELIVERED', 'MBWAY', DATE_SUB(NOW(), INTERVAL 650 DAY)),
+(1, 1, NULL, 'DELIVERED', 'CREDIT_CARD', DATE_SUB(NOW(), INTERVAL 620 DAY)),
+(4, 4, NULL, 'DELIVERED', 'MBWAY', DATE_SUB(NOW(), INTERVAL 600 DAY)),
+(5, 5, NULL, 'DELIVERED', 'CREDIT_CARD', DATE_SUB(NOW(), INTERVAL 580 DAY)),
+(2, 2, NULL, 'DELIVERED', 'PAYPAL', DATE_SUB(NOW(), INTERVAL 550 DAY)),
+(3, 3, 1, 'DELIVERED', 'MBWAY', DATE_SUB(NOW(), INTERVAL 520 DAY)),
+(1, 1, NULL, 'DELIVERED', 'CREDIT_CARD', DATE_SUB(NOW(), INTERVAL 500 DAY)),
+(4, 4, NULL, 'DELIVERED', 'MBWAY', DATE_SUB(NOW(), INTERVAL 480 DAY)),
+
+-- Year 2 (Mid)
+(5, 5, NULL, 'DELIVERED', 'CREDIT_CARD', DATE_SUB(NOW(), INTERVAL 360 DAY)),
+(1, 1, 2, 'DELIVERED', 'CREDIT_CARD', DATE_SUB(NOW(), INTERVAL 330 DAY)),
+(2, 2, NULL, 'DELIVERED', 'PAYPAL', DATE_SUB(NOW(), INTERVAL 300 DAY)),
+(3, 3, NULL, 'DELIVERED', 'MBWAY', DATE_SUB(NOW(), INTERVAL 270 DAY)),
+(4, 4, NULL, 'DELIVERED', 'MBWAY', DATE_SUB(NOW(), INTERVAL 240 DAY)),
+(5, 5, NULL, 'DELIVERED', 'CREDIT_CARD', DATE_SUB(NOW(), INTERVAL 210 DAY)),
+(1, 1, NULL, 'DELIVERED', 'CREDIT_CARD', DATE_SUB(NOW(), INTERVAL 180 DAY)),
+(2, 2, NULL, 'DELIVERED', 'PAYPAL', DATE_SUB(NOW(), INTERVAL 150 DAY)),
+(3, 3, NULL, 'DELIVERED', 'MBWAY', DATE_SUB(NOW(), INTERVAL 120 DAY)),
+(4, 4, NULL, 'DELIVERED', 'MBWAY', DATE_SUB(NOW(), INTERVAL 90 DAY)),
+
+-- Recent (Last 3 months)
+(5, 5, NULL, 'SHIPPED', 'CREDIT_CARD', DATE_SUB(NOW(), INTERVAL 60 DAY)),
+(1, 1, NULL, 'SHIPPED', 'CREDIT_CARD', DATE_SUB(NOW(), INTERVAL 45 DAY)),
+(2, 2, NULL, 'SHIPPED', 'PAYPAL', DATE_SUB(NOW(), INTERVAL 30 DAY)),
+(3, 3, NULL, 'PAID', 'MBWAY', DATE_SUB(NOW(), INTERVAL 15 DAY)),
+(4, 4, NULL, 'PAID', 'MBWAY', DATE_SUB(NOW(), INTERVAL 10 DAY)),
+(5, 5, NULL, 'PAID', 'CREDIT_CARD', DATE_SUB(NOW(), INTERVAL 5 DAY)),
+(1, 1, NULL, 'PENDING', 'CREDIT_CARD', DATE_SUB(NOW(), INTERVAL 3 DAY)),
+(2, 2, NULL, 'PENDING', 'PAYPAL', DATE_SUB(NOW(), INTERVAL 2 DAY)),
+(3, 3, NULL, 'PENDING', 'MBWAY', DATE_SUB(NOW(), INTERVAL 1 DAY)),
+(4, 4, NULL, 'CANCELLED', 'MBWAY', NOW());
+
+-- 10. Order Items (Linking products to orders)
+-- Random distribution of items
+INSERT INTO order_items (order_id, product_id, quantity, unit_price) VALUES
+(1, 1, 2, 15.50), (1, 5, 1, 8.50),
+(2, 3, 1, 25.00),
+(3, 2, 3, 18.00),
+(4, 1, 1, 15.50),
+(5, 5, 5, 8.50),
+(6, 4, 1, 599.99), -- Big sale
+(7, 2, 2, 18.00),
+(8, 3, 1, 25.00), (8, 5, 1, 8.50),
+(9, 1, 1, 15.50),
+(10, 2, 1, 18.00),
+(11, 1, 2, 15.50),
+(12, 3, 1, 25.00),
+(13, 2, 1, 18.00),
+(14, 5, 2, 8.50),
+(15, 1, 1, 15.50),
+(16, 4, 1, 599.99),
+(17, 2, 2, 18.00),
+(18, 3, 1, 25.00),
+(19, 1, 3, 15.50),
+(20, 5, 1, 8.50),
+(21, 2, 1, 18.00),
+(22, 1, 1, 15.50),
+(23, 3, 1, 25.00),
+(24, 2, 2, 18.00),
+(25, 5, 3, 8.50),
+(26, 1, 1, 15.50),
+(27, 2, 1, 18.00),
+(28, 3, 1, 25.00),
+(29, 1, 2, 15.50),
+(30, 5, 1, 8.50);
+
+-- 11. Reviews
+INSERT INTO reviews (product_id, user_id, rating, comment, created_at) VALUES
+(1, 1, 5, 'Great coffee!', DATE_SUB(NOW(), INTERVAL 600 DAY)),
+(4, 5, 5, 'Best machine ever.', DATE_SUB(NOW(), INTERVAL 500 DAY)),
+(3, 2, 4, 'Good but fragile.', DATE_SUB(NOW(), INTERVAL 400 DAY));
+
+-- 12. Transaction Logs
+INSERT INTO transaction_logs (order_id, user_id, action_type, description, log_date) VALUES
+(1, 1, 'PAYMENT_SUCCESS', 'Payment processed via Credit Card', DATE_SUB(NOW(), INTERVAL 700 DAY)),
+(6, 5, 'PAYMENT_SUCCESS', 'High value transaction approved', DATE_SUB(NOW(), INTERVAL 580 DAY)),
+(30, 4, 'ORDER_CANCELLED', 'User requested cancellation', NOW());
