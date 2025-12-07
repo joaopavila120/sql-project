@@ -253,6 +253,27 @@ CREATE TABLE transaction_logs (
 
 
 /* =============================================================================
+   SECTION 1.1: TRIGGERS
+   ============================================================================= */
+
+-- Trigger 1: Log when a new order is placed
+CREATE TRIGGER trg_log_order_placement
+AFTER INSERT ON orders
+FOR EACH ROW
+INSERT INTO transaction_logs (order_id, user_id, action_type, description, log_date)
+VALUES (NEW.order_id, NEW.user_id, 'ORDER_PLACED', CONCAT('Order placed with status: ', NEW.status), NEW.created_at);
+
+-- Trigger 2: Log when an order is updated
+CREATE TRIGGER trg_log_order_update
+AFTER UPDATE ON orders
+FOR EACH ROW
+INSERT INTO transaction_logs (order_id, user_id, action_type, description, log_date)
+SELECT NEW.order_id, NEW.user_id, 'ORDER_UPDATED', CONCAT('Status changed from ', OLD.status, ' to ', NEW.status), NOW()
+FROM DUAL
+WHERE OLD.status != NEW.status;
+
+
+/* =============================================================================
    SECTION 2: DUMMY DATA GENERATION
    ============================================================================= */
 
@@ -397,42 +418,3 @@ INSERT INTO reviews (product_id, user_id, rating, comment, created_at) VALUES
 (1, 1, 5, 'Great coffee!', DATE_SUB(NOW(), INTERVAL 600 DAY)),
 (4, 5, 5, 'Best machine ever.', DATE_SUB(NOW(), INTERVAL 500 DAY)),
 (3, 2, 4, 'Good but fragile.', DATE_SUB(NOW(), INTERVAL 400 DAY));
-
--- 12. Transaction Logs
--- Generating a log for every order to ensure audit trail completeness.
-INSERT INTO transaction_logs (order_id, user_id, action_type, description, log_date) VALUES
--- Year 1 Logs
-(1, 1, 'PAYMENT_SUCCESS', 'Payment processed via Credit Card', DATE_SUB(NOW(), INTERVAL 700 DAY)),
-(2, 2, 'PAYMENT_SUCCESS', 'Payment processed via PayPal', DATE_SUB(NOW(), INTERVAL 680 DAY)),
-(3, 3, 'PAYMENT_SUCCESS', 'Payment processed via MBWAY', DATE_SUB(NOW(), INTERVAL 650 DAY)),
-(4, 1, 'PAYMENT_SUCCESS', 'Payment processed via Credit Card', DATE_SUB(NOW(), INTERVAL 620 DAY)),
-(5, 4, 'PAYMENT_SUCCESS', 'Payment processed via MBWAY', DATE_SUB(NOW(), INTERVAL 600 DAY)),
-(6, 5, 'PAYMENT_SUCCESS', 'High value transaction approved', DATE_SUB(NOW(), INTERVAL 580 DAY)),
-(7, 2, 'PAYMENT_SUCCESS', 'Payment processed via PayPal', DATE_SUB(NOW(), INTERVAL 550 DAY)),
-(8, 3, 'PAYMENT_SUCCESS', 'Payment processed via MBWAY', DATE_SUB(NOW(), INTERVAL 520 DAY)),
-(9, 1, 'PAYMENT_SUCCESS', 'Payment processed via Credit Card', DATE_SUB(NOW(), INTERVAL 500 DAY)),
-(10, 4, 'PAYMENT_SUCCESS', 'Payment processed via MBWAY', DATE_SUB(NOW(), INTERVAL 480 DAY)),
-
--- Year 2 Logs
-(11, 5, 'PAYMENT_SUCCESS', 'Payment processed via Credit Card', DATE_SUB(NOW(), INTERVAL 360 DAY)),
-(12, 1, 'PAYMENT_SUCCESS', 'Payment processed via Credit Card', DATE_SUB(NOW(), INTERVAL 330 DAY)),
-(13, 2, 'PAYMENT_SUCCESS', 'Payment processed via PayPal', DATE_SUB(NOW(), INTERVAL 300 DAY)),
-(14, 3, 'PAYMENT_SUCCESS', 'Payment processed via MBWAY', DATE_SUB(NOW(), INTERVAL 270 DAY)),
-(15, 4, 'PAYMENT_SUCCESS', 'Payment processed via MBWAY', DATE_SUB(NOW(), INTERVAL 240 DAY)),
-(16, 5, 'PAYMENT_SUCCESS', 'Payment processed via Credit Card', DATE_SUB(NOW(), INTERVAL 210 DAY)),
-(17, 1, 'PAYMENT_SUCCESS', 'Payment processed via Credit Card', DATE_SUB(NOW(), INTERVAL 180 DAY)),
-(18, 2, 'PAYMENT_SUCCESS', 'Payment processed via PayPal', DATE_SUB(NOW(), INTERVAL 150 DAY)),
-(19, 3, 'PAYMENT_SUCCESS', 'Payment processed via MBWAY', DATE_SUB(NOW(), INTERVAL 120 DAY)),
-(20, 4, 'PAYMENT_SUCCESS', 'Payment processed via MBWAY', DATE_SUB(NOW(), INTERVAL 90 DAY)),
-
--- Recent Logs
-(21, 5, 'PAYMENT_SUCCESS', 'Payment processed via Credit Card', DATE_SUB(NOW(), INTERVAL 60 DAY)),
-(22, 1, 'PAYMENT_SUCCESS', 'Payment processed via Credit Card', DATE_SUB(NOW(), INTERVAL 45 DAY)),
-(23, 2, 'PAYMENT_SUCCESS', 'Payment processed via PayPal', DATE_SUB(NOW(), INTERVAL 30 DAY)),
-(24, 3, 'PAYMENT_SUCCESS', 'Payment processed via MBWAY', DATE_SUB(NOW(), INTERVAL 15 DAY)),
-(25, 4, 'PAYMENT_SUCCESS', 'Payment processed via MBWAY', DATE_SUB(NOW(), INTERVAL 10 DAY)),
-(26, 5, 'PAYMENT_SUCCESS', 'Payment processed via Credit Card', DATE_SUB(NOW(), INTERVAL 5 DAY)),
-(27, 1, 'ORDER_PLACED', 'Order placed, awaiting payment capture', DATE_SUB(NOW(), INTERVAL 3 DAY)),
-(28, 2, 'ORDER_PLACED', 'Order placed, awaiting payment capture', DATE_SUB(NOW(), INTERVAL 2 DAY)),
-(29, 3, 'ORDER_PLACED', 'Order placed, awaiting payment capture', DATE_SUB(NOW(), INTERVAL 1 DAY)),
-(30, 4, 'ORDER_CANCELLED', 'User requested cancellation', NOW());
