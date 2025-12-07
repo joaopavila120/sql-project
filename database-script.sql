@@ -267,10 +267,12 @@ VALUES (NEW.order_id, NEW.user_id, 'ORDER_PLACED', CONCAT('Order placed with sta
 CREATE TRIGGER trg_log_order_update
 AFTER UPDATE ON orders
 FOR EACH ROW
-INSERT INTO transaction_logs (order_id, user_id, action_type, description, log_date)
-SELECT NEW.order_id, NEW.user_id, 'ORDER_UPDATED', CONCAT('Status changed from ', OLD.status, ' to ', NEW.status), NOW()
-FROM DUAL
-WHERE OLD.status != NEW.status;
+BEGIN
+  IF OLD.status != NEW.status THEN
+    INSERT INTO transaction_logs (order_id, user_id, action_type, description, log_date)
+    VALUES (NEW.order_id, NEW.user_id, 'ORDER_UPDATED', CONCAT('Status changed from ', OLD.status, ' to ', NEW.status), NOW());
+  END IF;
+END;
 
 
 /* =============================================================================
