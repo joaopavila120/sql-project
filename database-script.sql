@@ -257,23 +257,40 @@ CREATE TABLE transaction_logs (
    ============================================================================= */
 
 -- Trigger 1: Log when a new order is placed
+DELIMITER $$
+
+-- Trigger 1: Log when a new order is placed
 CREATE TRIGGER trg_log_order_placement
 AFTER INSERT ON orders
 FOR EACH ROW
-INSERT INTO transaction_logs (order_id, user_id, action_type, description, log_date)
-VALUES (NEW.order_id, NEW.user_id, 'ORDER_PLACED', CONCAT('Order placed with status: ', NEW.status), NEW.created_at);
-
+BEGIN
+  INSERT INTO transaction_logs (order_id, user_id, action_type, description, log_date)
+  VALUES (NEW.order_id, NEW.user_id, 'ORDER_PLACED',
+          CONCAT('Order placed with status: ', NEW.status),
+          NEW.created_at);
+END$$
+SELECT * FROM transaction_logs;
 -- Trigger 2: Log when an order is updated
 CREATE TRIGGER trg_log_order_update
 AFTER UPDATE ON orders
 FOR EACH ROW
 BEGIN
-  IF OLD.status != NEW.status THEN
+  IF OLD.status <> NEW.status THEN
     INSERT INTO transaction_logs (order_id, user_id, action_type, description, log_date)
-    VALUES (NEW.order_id, NEW.user_id, 'ORDER_UPDATED', CONCAT('Status changed from ', OLD.status, ' to ', NEW.status), NOW());
+    VALUES (NEW.order_id, NEW.user_id, 'ORDER_UPDATED',
+            CONCAT('Status changed from ', OLD.status, ' to ', NEW.status),
+            NOW());
   END IF;
-END;
+ -- 2) Update product stock ONLY when the order becomes PAID for the first time
+  IF OLD.status <> 'PAID' AND NEW.status = 'PAID' THEN
+    UPDATE products p
+    JOIN order_items oi ON oi.product_id = p.product_id
+    SET p.stock_quantity = p.stock_quantity - oi.quantity
+    WHERE oi.order_id = NEW.order_id;
+  END IF;
+END$$
 
+DELIMITER ;
 
 /* =============================================================================
    SECTION 2: DUMMY DATA GENERATION
@@ -420,3 +437,83 @@ INSERT INTO reviews (product_id, user_id, rating, comment, created_at) VALUES
 (1, 1, 5, 'Great coffee!', DATE_SUB(NOW(), INTERVAL 600 DAY)),
 (4, 5, 5, 'Best machine ever.', DATE_SUB(NOW(), INTERVAL 500 DAY)),
 (3, 2, 4, 'Good but fragile.', DATE_SUB(NOW(), INTERVAL 400 DAY));
+
+/* =============================================================================
+   SECTION 3: INVOICE VIEWS
+   ============================================================================= */
+
+-- View 1: Invoice header and totals (one row per order)
+CREATE OR REPLACE VIEW v_invoice_header AS
+SELECT
+  o.order_id                      AS invoice_number,
+  o.created_at                    AS invoice_date,
+
+  -- Billed to customer
+  u.full_name                     AS customer_name,
+  u.email                         AS customer_email,
+  a.street                        AS customer_street,
+  a.city                          AS customer_city,
+  a.postal_code                   AS customer_postal_code,
+  c.name                          AS customer_country,
+
+  -- Company information
+  'SQLatte Coffee E-Commerce'     AS company_name,
+  'Rua Augusta, 123'              AS company_street,
+  'Lisbon'                        AS company_city,
+  '1000-001'                      AS company_postal_code,
+  'Portugal'                      AS company_country,
+  'info@sqlatte.com'              AS company_email,
+  '+351 912 000 000'              AS company_phone,
+
+  -- Totals
+  ot.subtotal                     AS subtotal,
+
+  COALESCE(
+    CASE
+      WHEN cp.discount_type = 'FIXED' THEN cp.discount_val
+      WHEN cp.discount_type = 'PERCENTAGE'
+        THEN ot.subtotal * (cp.discount_val / 100)
+      ELSE 0
+    END,
+    0
+  )                               AS discount_amount,
+
+  0                                AS tax_rate, 
+  0                                AS tax_amount,  
+
+  ( ot.subtotal
+    - COALESCE(
+        CASE
+          WHEN cp.discount_type = 'FIXED' THEN cp.discount_val
+          WHEN cp.discount_type = 'PERCENTAGE'
+            THEN ot.subtotal * (cp.discount_val / 100)
+          ELSE 0
+        END,
+        0
+      )
+  )                               AS total
+FROM orders o
+JOIN users u          ON u.user_id        = o.user_id
+JOIN addresses a      ON a.address_id     = o.address_id
+JOIN countries c      ON c.country_code   = a.country_code
+LEFT JOIN coupons cp  ON cp.coupon_id     = o.coupon_id
+JOIN (
+    -- Order totals 
+    SELECT
+      order_id,
+      SUM(quantity * unit_price) AS subtotal
+    FROM order_items
+    GROUP BY order_id
+) ot ON ot.order_id = o.order_id;
+
+-- View 2: Invoice detail lines 
+CREATE OR REPLACE VIEW v_invoice_lines AS
+SELECT
+  o.order_id                    AS invoice_number,
+  p.name                        AS description,
+  oi.unit_price                 AS unit_cost,
+  oi.quantity                   AS quantity,
+  (oi.unit_price * oi.quantity) AS amount
+FROM order_items oi
+JOIN orders o   ON o.order_id   = oi.order_id
+JOIN products p ON p.product_id = oi.product_id;
