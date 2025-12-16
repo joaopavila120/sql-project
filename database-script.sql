@@ -401,7 +401,8 @@ INSERT INTO orders (user_id, address_id, coupon_id, status, payment_method, crea
 -- 10. Order Items (Linking products to orders)
 -- Random distribution of items
 INSERT INTO order_items (order_id, product_id, quantity, unit_price) VALUES
-(1, 1, 2, 15.50), (1, 5, 1, 8.50),
+(1, 1, 2, 15.50), 
+(1, 5, 1, 8.50),
 (2, 3, 1, 25.00),
 (3, 2, 3, 18.00),
 (4, 1, 1, 15.50),
@@ -445,58 +446,50 @@ INSERT INTO reviews (product_id, user_id, rating, comment, created_at) VALUES
 -- View 1: Invoice header and totals (one row per order)
 CREATE OR REPLACE VIEW v_invoice_header AS
 SELECT
-  o.order_id                      AS invoice_number,
-  o.created_at                    AS invoice_date,
-
+  o.order_id AS invoice_number,
+  o.created_at AS invoice_date,
   -- Billed to customer
-  u.full_name                     AS customer_name,
-  u.email                         AS customer_email,
-  a.street                        AS customer_street,
-  a.city                          AS customer_city,
-  a.postal_code                   AS customer_postal_code,
-  c.name                          AS customer_country,
-
+  u.full_name AS customer_name,
+  u.email AS customer_email,
+  a.street AS customer_street,
+  a.city AS customer_city,
+  a.postal_code AS customer_postal_code,
+  c.name AS customer_country,
   -- Company information
-  'SQLatte Coffee E-Commerce'     AS company_name,
-  'Rua Augusta, 123'              AS company_street,
-  'Lisbon'                        AS company_city,
-  '1000-001'                      AS company_postal_code,
-  'Portugal'                      AS company_country,
-  'info@sqlatte.com'              AS company_email,
-  '+351 912 000 000'              AS company_phone,
-
+  'SQLatte Coffee E-Commerce' AS company_name,
+  'Rua Augusta, 123' AS company_street,
+  'Lisbon' AS company_city,
+  '1000-001' AS company_postal_code,
+  'Portugal' AS company_country,
+  'info@sqlatte.com' AS company_email,
+  '+351 912 000 000' AS company_phone,
   -- Totals
-  ot.subtotal                     AS subtotal,
-
+  ot.subtotal AS subtotal,
   COALESCE(
     CASE
-      WHEN cp.discount_type = 'FIXED' THEN cp.discount_val
-      WHEN cp.discount_type = 'PERCENTAGE'
-        THEN ot.subtotal * (cp.discount_val / 100)
-      ELSE 0
+        WHEN cp.discount_type = 'FIXED' THEN cp.discount_val
+        WHEN cp.discount_type = 'PERCENTAGE' THEN ot.subtotal * (cp.discount_val / 100)
+        ELSE 0
     END,
     0
-  )                               AS discount_amount,
-
-  0                                AS tax_rate, 
-  0                                AS tax_amount,  
-
-  ( ot.subtotal
-    - COALESCE(
-        CASE
-          WHEN cp.discount_type = 'FIXED' THEN cp.discount_val
-          WHEN cp.discount_type = 'PERCENTAGE'
-            THEN ot.subtotal * (cp.discount_val / 100)
-          ELSE 0
-        END,
-        0
-      )
-  )                               AS total
+) AS discount_amount,
+0 AS tax_rate,
+0 AS tax_amount,
+(ot.subtotal
+- COALESCE(
+	CASE
+		WHEN cp.discount_type = 'FIXED' THEN cp.discount_val
+		WHEN cp.discount_type = 'PERCENTAGE' THEN ot.subtotal * (cp.discount_val / 100)
+		ELSE 0
+	END,
+	0
+)
+) AS total
 FROM orders o
-JOIN users u          ON u.user_id        = o.user_id
-JOIN addresses a      ON a.address_id     = o.address_id
-JOIN countries c      ON c.country_code   = a.country_code
-LEFT JOIN coupons cp  ON cp.coupon_id     = o.coupon_id
+JOIN users u ON u.user_id = o.user_id
+JOIN addresses a ON a.address_id = o.address_id
+JOIN countries c ON c.country_code = a.country_code
+LEFT JOIN coupons cp ON cp.coupon_id = o.coupon_id
 JOIN (
     -- Order totals 
     SELECT
@@ -509,11 +502,69 @@ JOIN (
 -- View 2: Invoice detail lines 
 CREATE OR REPLACE VIEW v_invoice_lines AS
 SELECT
-  o.order_id                    AS invoice_number,
-  p.name                        AS description,
-  oi.unit_price                 AS unit_cost,
-  oi.quantity                   AS quantity,
+  o.order_id AS invoice_number,
+  p.name AS description,
+  oi.unit_price AS unit_cost,
+  oi.quantity AS quantity,
   (oi.unit_price * oi.quantity) AS amount
 FROM order_items oi
-JOIN orders o   ON o.order_id   = oi.order_id
+JOIN orders o ON o.order_id = oi.order_id
 JOIN products p ON p.product_id = oi.product_id;
+
+/* =============================================================================
+   BUSINESS QUESTIONS
+   ============================================================================= */
+   
+-- 1. High-Value Customer and Product Performance
+-- Which are our top 3 selling products by total revenue, and which customers have
+-- placed the most orders that included at least one of these top-selling products?
+
+WITH TopSellingProducts AS (
+    -- 1. Identify the top 3 products by total revenue 
+    SELECT 
+		oi.product_id, 
+        p.name AS product_name, 
+        SUM(oi.quantity * oi.unit_price) AS product_revenue_total
+    FROM order_items oi
+    JOIN products p ON p.product_id = oi.product_id
+    GROUP BY oi.product_id, p.name
+    ORDER BY product_revenue_total DESC
+    LIMIT 3
+)
+-- 2. Aggregate customer order counts for these specific products
+SELECT 
+	u.user_id, 
+    u.full_name AS customer_name, 
+	COUNT(DISTINCT o.order_id) AS orders_with_top_product_count,
+	GROUP_CONCAT(DISTINCT tsp.product_name ORDER BY tsp.product_name SEPARATOR ', ') 
+    AS purchased_top_products
+FROM orders o
+JOIN users u ON u.user_id = o.user_id
+JOIN order_items oi ON oi.order_id = o.order_id
+JOIN TopSellingProducts tsp ON tsp.product_id = oi.product_id
+-- Only successfully paid/shipped/delivered orders 
+WHERE o.status IN ('PAID', 'SHIPPED', 'DELIVERED')
+GROUP BY u.user_id, u.full_name
+ORDER BY orders_with_top_product_count DESC, u.user_id
+LIMIT 5; 
+
+-- 2. Coupon Effectiveness by Order Status
+-- What is the usage rate of each coupon code, and how does the use of a coupon 
+-- (compared to no coupon) impact the order's final status
+-- (specifically looking at the rate of being CANCELLED versus DELIVERED)?
+
+-- Grouping by coupon code (or 'NO_COUPON') and order status
+SELECT 
+	COALESCE(cp.code, 'NO_COUPON') AS coupon_code, 
+    o.status AS order_status, 
+	COUNT(o.order_id) AS number_of_orders,
+	-- Calculate the total revenue associated with this group for context
+    SUM(vh.total) AS total_revenue_contribution
+FROM orders o
+LEFT JOIN coupons cp ON cp.coupon_id = o.coupon_id
+-- Join with the Invoice Header View to easily get the final calculated total
+JOIN v_invoice_header vh ON vh.invoice_number = o.order_id 
+-- Focus on the statuses most relevant to success (DELIVERED) and failure (CANCELLED)
+WHERE o.status IN ('DELIVERED', 'CANCELLED')
+GROUP BY coupon_code, o.status
+ORDER BY coupon_code;
