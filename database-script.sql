@@ -7,18 +7,18 @@ USE coffee_ecommerce;
    ============================================================================= */
 
 /* -----------------------------------------------------------------------------
-   TABLE: users
-   DESCRIPTION: Stores user account information including login credentials and profile data.
+   TABLE: customers
+   DESCRIPTION: Stores customer account information including login credentials and profile data.
    COLUMNS:
-     user_id: Unique identifier for the user (BIGINT for scalability)
-     email: User email address, used for login
+     customer_id: Unique identifier for the customer
+     email: Customer email address, used for login
      password_hash: Hashed password for security
-     full_name: Full name of the user
+     full_name: Full name of the customer
      phone: Contact phone number
-     created_at: Timestamp when the user was created
+     created_at: Timestamp when the customer was created
    ----------------------------------------------------------------------------- */
-CREATE TABLE users (
-  user_id        BIGINT PRIMARY KEY AUTO_INCREMENT,
+CREATE TABLE customers (
+  customer_id    INT PRIMARY KEY AUTO_INCREMENT,
   email          VARCHAR(150) NOT NULL UNIQUE,
   password_hash  VARCHAR(255) NOT NULL,
   full_name      VARCHAR(100) NOT NULL,
@@ -40,10 +40,10 @@ CREATE TABLE countries (
 
 /* -----------------------------------------------------------------------------
    TABLE: addresses
-   DESCRIPTION: Stores user shipping and billing addresses.
+   DESCRIPTION: Stores customer shipping and billing addresses.
    COLUMNS:
      address_id: Unique identifier for the address
-     user_id: Foreign key linking to the user
+     customer_id: Foreign key linking to the customer
      street: Street address including number
      city: City name
      postal_code: Postal or ZIP code
@@ -51,14 +51,14 @@ CREATE TABLE countries (
      is_default: Flag indicating if this is the default address
    ----------------------------------------------------------------------------- */
 CREATE TABLE addresses (
-  address_id     BIGINT PRIMARY KEY AUTO_INCREMENT,
-  user_id        BIGINT NOT NULL,
+  address_id     INT PRIMARY KEY AUTO_INCREMENT,
+  customer_id    INT NOT NULL,
   street         VARCHAR(150) NOT NULL,
   city           VARCHAR(100) NOT NULL,
   postal_code    VARCHAR(20) NOT NULL,
   country_code   CHAR(2) NOT NULL DEFAULT 'PT',
   is_default     BOOLEAN NOT NULL DEFAULT FALSE,
-  FOREIGN KEY (user_id) REFERENCES users(user_id),
+  FOREIGN KEY (customer_id) REFERENCES customers(customer_id),
   FOREIGN KEY (country_code) REFERENCES countries(country_code)
 ) ENGINE=InnoDB;
 
@@ -71,7 +71,7 @@ CREATE TABLE addresses (
      description: Short description of the category
    ----------------------------------------------------------------------------- */
 CREATE TABLE categories (
-  category_id    BIGINT PRIMARY KEY AUTO_INCREMENT,
+  category_id    INT PRIMARY KEY AUTO_INCREMENT,
   name           VARCHAR(100) NOT NULL UNIQUE,
   description    VARCHAR(255)
 ) ENGINE=InnoDB;
@@ -85,7 +85,7 @@ CREATE TABLE categories (
      country_code: Foreign key linking to the country of origin
    ----------------------------------------------------------------------------- */
 CREATE TABLE brands (
-  brand_id       BIGINT PRIMARY KEY AUTO_INCREMENT,
+  brand_id       INT PRIMARY KEY AUTO_INCREMENT,
   name           VARCHAR(100) NOT NULL UNIQUE,
   country_code   CHAR(2),
   FOREIGN KEY (country_code) REFERENCES countries(country_code)
@@ -106,9 +106,9 @@ CREATE TABLE brands (
      created_at: Timestamp when the product was added
    ----------------------------------------------------------------------------- */
 CREATE TABLE products (
-  product_id     BIGINT PRIMARY KEY AUTO_INCREMENT,
-  category_id    BIGINT NOT NULL,
-  brand_id       BIGINT,
+  product_id     INT PRIMARY KEY AUTO_INCREMENT,
+  category_id    INT NOT NULL,
+  brand_id       INT,
   name           VARCHAR(150) NOT NULL,
   description    TEXT,
   price          DECIMAL(10,2) NOT NULL,
@@ -116,7 +116,9 @@ CREATE TABLE products (
   is_active      BOOLEAN NOT NULL DEFAULT TRUE,
   created_at     DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (category_id)    REFERENCES categories(category_id),
-  FOREIGN KEY (brand_id)       REFERENCES brands(brand_id)
+  FOREIGN KEY (brand_id)       REFERENCES brands(brand_id),
+  INDEX idx_products_category (category_id),
+  INDEX idx_products_brand (brand_id)
 ) ENGINE=InnoDB;
 
 /* -----------------------------------------------------------------------------
@@ -129,8 +131,8 @@ CREATE TABLE products (
      attribute_value: Value of the attribute (e.g., 'Dark')
    ----------------------------------------------------------------------------- */
 CREATE TABLE product_attributes (
-  attribute_id   BIGINT PRIMARY KEY AUTO_INCREMENT,
-  product_id     BIGINT NOT NULL,
+  attribute_id   INT PRIMARY KEY AUTO_INCREMENT,
+  product_id     INT NOT NULL,
   attribute_name VARCHAR(50) NOT NULL,
   attribute_value VARCHAR(100) NOT NULL,
   FOREIGN KEY (product_id) REFERENCES products(product_id)
@@ -148,7 +150,7 @@ CREATE TABLE product_attributes (
      is_active: Flag indicating if the coupon is currently valid
    ----------------------------------------------------------------------------- */
 CREATE TABLE coupons (
-  coupon_id      BIGINT PRIMARY KEY AUTO_INCREMENT,
+  coupon_id      INT PRIMARY KEY AUTO_INCREMENT,
   code           VARCHAR(50) NOT NULL UNIQUE,
   discount_val   DECIMAL(10,2) NOT NULL,
   discount_type  ENUM('FIXED','PERCENTAGE') NOT NULL,
@@ -161,7 +163,7 @@ CREATE TABLE coupons (
    DESCRIPTION: Stores customer orders and their status.
    COLUMNS:
      order_id: Unique identifier for the order
-     user_id: Foreign key linking to the user who placed the order
+     customer_id: Foreign key linking to the customer who placed the order
      address_id: Foreign key linking to the shipping address
      coupon_id: Foreign key linking to the applied coupon (optional)
      status: Current status of the order
@@ -172,19 +174,22 @@ CREATE TABLE coupons (
      created_at: Timestamp when the order was placed
    ----------------------------------------------------------------------------- */
 CREATE TABLE orders (
-  order_id         BIGINT PRIMARY KEY AUTO_INCREMENT,
-  user_id          BIGINT NOT NULL,
-  address_id       BIGINT NOT NULL,
-  coupon_id        BIGINT,
+  order_id         INT PRIMARY KEY AUTO_INCREMENT,
+  customer_id      INT NOT NULL,
+  address_id       INT NOT NULL,
+  coupon_id        INT,
   status           ENUM('PENDING','PAID','SHIPPED','DELIVERED','CANCELLED') NOT NULL DEFAULT 'PENDING',
   payment_method   ENUM('CREDIT_CARD','PAYPAL','MBWAY') NOT NULL,
   payment_ref      VARCHAR(100),
   carrier_name     VARCHAR(100),
   tracking_code    VARCHAR(100),
   created_at       DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  FOREIGN KEY (user_id)    REFERENCES users(user_id),
+  FOREIGN KEY (customer_id)    REFERENCES customers(customer_id),
   FOREIGN KEY (address_id) REFERENCES addresses(address_id),
-  FOREIGN KEY (coupon_id)  REFERENCES coupons(coupon_id)
+  FOREIGN KEY (coupon_id)  REFERENCES coupons(coupon_id),
+  INDEX idx_orders_customer (customer_id),
+  INDEX idx_orders_status (status),
+  INDEX idx_orders_created_at (created_at)
 ) ENGINE=InnoDB;
 
 /* -----------------------------------------------------------------------------
@@ -198,35 +203,38 @@ CREATE TABLE orders (
      unit_price: Price per unit at the time of purchase
    ----------------------------------------------------------------------------- */
 CREATE TABLE order_items (
-  order_item_id  BIGINT PRIMARY KEY AUTO_INCREMENT,
-  order_id       BIGINT NOT NULL,
-  product_id     BIGINT NOT NULL,
+  order_item_id  INT PRIMARY KEY AUTO_INCREMENT,
+  order_id       INT NOT NULL,
+  product_id     INT NOT NULL,
   quantity       INT NOT NULL,
   unit_price     DECIMAL(10,2) NOT NULL,
   FOREIGN KEY (order_id)   REFERENCES orders(order_id),
-  FOREIGN KEY (product_id) REFERENCES products(product_id)
+  FOREIGN KEY (product_id) REFERENCES products(product_id),
+  INDEX idx_order_items_order (order_id),
+  INDEX idx_order_items_product (product_id)
 ) ENGINE=InnoDB;
 
 /* -----------------------------------------------------------------------------
    TABLE: reviews
-   DESCRIPTION: Product reviews submitted by users.
+   DESCRIPTION: Product reviews submitted by customers.
    COLUMNS:
      review_id: Unique identifier for the review
      product_id: Foreign key linking to the product
-     user_id: Foreign key linking to the user
-     rating: Rating given by the user (1-5)
+     customer_id: Foreign key linking to the customer
+     rating: Rating given by the customer (1-5)
      comment: Textual comment for the review
      created_at: Timestamp when the review was created
    ----------------------------------------------------------------------------- */
 CREATE TABLE reviews (
-  review_id      BIGINT PRIMARY KEY AUTO_INCREMENT,
-  product_id     BIGINT NOT NULL,
-  user_id        BIGINT NOT NULL,
+  review_id      INT PRIMARY KEY AUTO_INCREMENT,
+  product_id     INT NOT NULL,
+  customer_id    INT NOT NULL,
   rating         TINYINT NOT NULL CHECK (rating BETWEEN 1 AND 5),
   comment        TEXT,
   created_at     DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (product_id) REFERENCES products(product_id),
-  FOREIGN KEY (user_id)    REFERENCES users(user_id)
+  FOREIGN KEY (customer_id)    REFERENCES customers(customer_id),
+  INDEX idx_reviews_product (product_id)
 ) ENGINE=InnoDB;
 
 /* -----------------------------------------------------------------------------
@@ -235,20 +243,20 @@ CREATE TABLE reviews (
    COLUMNS:
      log_id: Unique identifier for the log entry
      order_id: Foreign key linking to the related order (optional)
-     user_id: Foreign key linking to the user who performed the action (optional)
+     customer_id: Foreign key linking to the customer who performed the action (optional)
      action_type: Type of action (e.g., PAYMENT_SUCCESS, ORDER_CANCELLED)
      description: Detailed description of the event
      log_date: Timestamp when the event occurred
    ----------------------------------------------------------------------------- */
 CREATE TABLE transaction_logs (
-  log_id         BIGINT PRIMARY KEY AUTO_INCREMENT,
-  order_id       BIGINT,
-  user_id        BIGINT,
+  log_id         INT PRIMARY KEY AUTO_INCREMENT,
+  order_id       INT,
+  customer_id    INT,
   action_type    VARCHAR(50) NOT NULL,
   description    TEXT,
   log_date       DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (order_id) REFERENCES orders(order_id),
-  FOREIGN KEY (user_id)  REFERENCES users(user_id)
+  FOREIGN KEY (customer_id)  REFERENCES customers(customer_id)
 ) ENGINE=InnoDB;
 
 
@@ -257,40 +265,31 @@ CREATE TABLE transaction_logs (
    ============================================================================= */
 
 -- Trigger 1: Log when a new order is placed
-DELIMITER $$
-
--- Trigger 1: Log when a new order is placed
 CREATE TRIGGER trg_log_order_placement
 AFTER INSERT ON orders
 FOR EACH ROW
-BEGIN
-  INSERT INTO transaction_logs (order_id, user_id, action_type, description, log_date)
-  VALUES (NEW.order_id, NEW.user_id, 'ORDER_PLACED',
-          CONCAT('Order placed with status: ', NEW.status),
-          NEW.created_at);
-END$$
-SELECT * FROM transaction_logs;
+INSERT INTO transaction_logs (order_id, customer_id, action_type, description, log_date)
+VALUES (NEW.order_id, NEW.customer_id, 'ORDER_PLACED', CONCAT('Order placed with status: ', NEW.status), NEW.created_at);
+
 -- Trigger 2: Log when an order is updated
 CREATE TRIGGER trg_log_order_update
 AFTER UPDATE ON orders
 FOR EACH ROW
-BEGIN
-  IF OLD.status <> NEW.status THEN
-    INSERT INTO transaction_logs (order_id, user_id, action_type, description, log_date)
-    VALUES (NEW.order_id, NEW.user_id, 'ORDER_UPDATED',
-            CONCAT('Status changed from ', OLD.status, ' to ', NEW.status),
-            NOW());
-  END IF;
- -- 2) Update product stock ONLY when the order becomes PAID for the first time
-  IF OLD.status <> 'PAID' AND NEW.status = 'PAID' THEN
-    UPDATE products p
-    JOIN order_items oi ON oi.product_id = p.product_id
-    SET p.stock_quantity = p.stock_quantity - oi.quantity
-    WHERE oi.order_id = NEW.order_id;
-  END IF;
-END$$
+INSERT INTO transaction_logs (order_id, customer_id, action_type, description, log_date)
+SELECT NEW.order_id, NEW.customer_id, 'ORDER_UPDATED', CONCAT('Status changed from ', OLD.status, ' to ', NEW.status), NOW()
+FROM DUAL
+WHERE OLD.status != NEW.status;
 
-DELIMITER ;
+-- Trigger 3: Update stock when order is PAID
+CREATE TRIGGER trg_update_stock_on_paid
+AFTER UPDATE ON orders
+FOR EACH ROW
+UPDATE products p
+JOIN order_items oi ON oi.product_id = p.product_id
+SET p.stock_quantity = p.stock_quantity - oi.quantity
+WHERE oi.order_id = NEW.order_id
+  AND OLD.status != 'PAID' 
+  AND NEW.status = 'PAID';
 
 /* =============================================================================
    SECTION 2: DUMMY DATA GENERATION
@@ -305,8 +304,8 @@ INSERT INTO countries (country_code, name) VALUES
 ('FR', 'France'),
 ('JP', 'Japan');
 
--- 2. Users (5 users)
-INSERT INTO users (email, password_hash, full_name, phone, created_at) VALUES
+-- 2. Customers (5 customers)
+INSERT INTO customers (email, password_hash, full_name, phone, created_at) VALUES
 ('john.doe@example.com', 'hash123', 'John Doe', '+351912345678', DATE_SUB(NOW(), INTERVAL 2 YEAR)),
 ('jane.smith@example.com', 'hash456', 'Jane Smith', '+15550199', DATE_SUB(NOW(), INTERVAL 23 MONTH)),
 ('alice.jones@example.com', 'hash789', 'Alice Jones', '+351933333333', DATE_SUB(NOW(), INTERVAL 20 MONTH)),
@@ -314,7 +313,7 @@ INSERT INTO users (email, password_hash, full_name, phone, created_at) VALUES
 ('charlie.black@example.com', 'hashxyz', 'Charlie Black', '+33123456789', DATE_SUB(NOW(), INTERVAL 1 YEAR));
 
 -- 3. Addresses
-INSERT INTO addresses (user_id, street, city, postal_code, country_code, is_default) VALUES
+INSERT INTO addresses (customer_id, street, city, postal_code, country_code, is_default) VALUES
 (1, 'Rua da Liberdade 123', 'Lisbon', '1000-001', 'PT', TRUE),
 (2, '123 Main St', 'New York', '10001', 'US', TRUE),
 (3, 'Avenida dos Aliados 45', 'Porto', '4000-001', 'PT', TRUE),
@@ -361,7 +360,7 @@ INSERT INTO coupons (code, discount_val, discount_type, valid_until) VALUES
 -- IDs 11-20: Year 2 (First Half)
 -- IDs 21-30: Year 2 (Recent)
 
-INSERT INTO orders (user_id, address_id, coupon_id, status, payment_method, created_at) VALUES
+INSERT INTO orders (customer_id, address_id, coupon_id, status, payment_method, created_at) VALUES
 -- Year 1 (Oldest)
 (1, 1, NULL, 'DELIVERED', 'CREDIT_CARD', DATE_SUB(NOW(), INTERVAL 700 DAY)),
 (2, 2, 1, 'DELIVERED', 'PAYPAL', DATE_SUB(NOW(), INTERVAL 680 DAY)),
@@ -434,7 +433,7 @@ INSERT INTO order_items (order_id, product_id, quantity, unit_price) VALUES
 (30, 5, 1, 8.50);
 
 -- 11. Reviews
-INSERT INTO reviews (product_id, user_id, rating, comment, created_at) VALUES
+INSERT INTO reviews (product_id, customer_id, rating, comment, created_at) VALUES
 (1, 1, 5, 'Great coffee!', DATE_SUB(NOW(), INTERVAL 600 DAY)),
 (4, 5, 5, 'Best machine ever.', DATE_SUB(NOW(), INTERVAL 500 DAY)),
 (3, 2, 4, 'Good but fragile.', DATE_SUB(NOW(), INTERVAL 400 DAY));
@@ -449,8 +448,8 @@ SELECT
   o.order_id AS invoice_number,
   o.created_at AS invoice_date,
   -- Billed to customer
-  u.full_name AS customer_name,
-  u.email AS customer_email,
+  cust.full_name AS customer_name,
+  cust.email AS customer_email,
   a.street AS customer_street,
   a.city AS customer_city,
   a.postal_code AS customer_postal_code,
@@ -486,7 +485,7 @@ SELECT
 )
 ) AS total
 FROM orders o
-JOIN users u ON u.user_id = o.user_id
+JOIN customers cust ON cust.customer_id = o.customer_id
 JOIN addresses a ON a.address_id = o.address_id
 JOIN countries c ON c.country_code = a.country_code
 LEFT JOIN coupons cp ON cp.coupon_id = o.coupon_id
@@ -533,19 +532,19 @@ WITH TopSellingProducts AS (
 )
 -- 2. Aggregate customer order counts for these specific products
 SELECT 
-	u.user_id, 
-    u.full_name AS customer_name, 
+	cust.customer_id, 
+    cust.full_name AS customer_name, 
 	COUNT(DISTINCT o.order_id) AS orders_with_top_product_count,
 	GROUP_CONCAT(DISTINCT tsp.product_name ORDER BY tsp.product_name SEPARATOR ', ') 
     AS purchased_top_products
 FROM orders o
-JOIN users u ON u.user_id = o.user_id
+JOIN customers cust ON cust.customer_id = o.customer_id
 JOIN order_items oi ON oi.order_id = o.order_id
 JOIN TopSellingProducts tsp ON tsp.product_id = oi.product_id
 -- Only successfully paid/shipped/delivered orders 
 WHERE o.status IN ('PAID', 'SHIPPED', 'DELIVERED')
-GROUP BY u.user_id, u.full_name
-ORDER BY orders_with_top_product_count DESC, u.user_id
+GROUP BY cust.customer_id, cust.full_name
+ORDER BY orders_with_top_product_count DESC, cust.customer_id
 LIMIT 5; 
 
 -- 2. Coupon Effectiveness by Order Status
