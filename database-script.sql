@@ -259,10 +259,28 @@ CREATE TABLE transaction_logs (
   FOREIGN KEY (customer_id)  REFERENCES customers(customer_id)
 ) ENGINE=InnoDB;
 
+/* =============================================================================
+   SECTION 1.1: CONSTRAINTS / DATA QUALITY (RECOMMENDED)
+   ============================================================================= */
+
+-- Prevent duplicate reviews by same customer for same product
+ALTER TABLE reviews
+  ADD CONSTRAINT uq_reviews UNIQUE (product_id, customer_id);
+
+-- Prevent duplicate product lines in the same order
+ALTER TABLE order_items
+  ADD CONSTRAINT uq_order_product UNIQUE (order_id, product_id);
+
+-- Basic data quality checks (MySQL 8+)
+ALTER TABLE order_items ADD CHECK (quantity > 0);
+ALTER TABLE products    ADD CHECK (price >= 0);
+ALTER TABLE products    ADD CHECK (stock_quantity >= 0);
+
 
 /* =============================================================================
-   SECTION 1.1: TRIGGERS
+   SECTION 1.2: TRIGGERS
    ============================================================================= */
+DELIMITER $$
 
 -- Trigger 1: Log when a new order is placed
 CREATE TRIGGER trg_log_order_placement
@@ -290,6 +308,8 @@ SET p.stock_quantity = p.stock_quantity - oi.quantity
 WHERE oi.order_id = NEW.order_id
   AND OLD.status != 'PAID' 
   AND NEW.status = 'PAID';
+  
+DELIMITER ;
 
 /* =============================================================================
    SECTION 2: DUMMY DATA GENERATION
@@ -511,6 +531,18 @@ JOIN orders o ON o.order_id = oi.order_id
 JOIN products p ON p.product_id = oi.product_id;
 
 /* =============================================================================
+   DEMO QUERIES (FOR VIDEO)
+   ============================================================================= */
+
+-- Demo invoice for one order
+SELECT * FROM v_invoice_header WHERE invoice_number = 1;
+SELECT * FROM v_invoice_lines  WHERE invoice_number = 1;
+
+-- Demo triggers: pick an order and change to PAID, then check logs + stock
+SELECT * FROM transaction_logs WHERE order_id = 27 ORDER BY log_date DESC;
+
+
+/* =============================================================================
    BUSINESS QUESTIONS
    ============================================================================= */
    
@@ -567,3 +599,54 @@ JOIN v_invoice_header vh ON vh.invoice_number = o.order_id
 WHERE o.status IN ('DELIVERED', 'CANCELLED')
 GROUP BY coupon_code, o.status
 ORDER BY coupon_code;
+
+-- 3) How is revenue trending month-by-month (last 24 months)?
+SELECT
+  YEAR(o.created_at)  AS order_year,
+  MONTH(o.created_at) AS order_month,
+  COUNT(DISTINCT o.order_id) AS orders_count,
+  SUM(vh.total) AS total_revenue
+FROM orders o
+JOIN v_invoice_header vh ON vh.invoice_number = o.order_id
+WHERE o.status IN ('PAID','SHIPPED','DELIVERED')
+  AND o.created_at >= DATE_SUB(CURDATE(), INTERVAL 24 MONTH)
+GROUP BY
+  YEAR(o.created_at),
+  MONTH(o.created_at)
+ORDER BY
+  order_year,
+  order_month;
+
+-- 4) Who are our top customers by total spend (LTV)?
+SELECT
+  c.customer_id,
+  c.full_name,
+  c.email,
+  COUNT(DISTINCT o.order_id) AS total_orders,
+  SUM(vh.total)              AS lifetime_value
+FROM customers c
+JOIN orders o ON o.customer_id = c.customer_id
+JOIN v_invoice_header vh ON vh.invoice_number = o.order_id
+WHERE o.status IN ('PAID','SHIPPED','DELIVERED')
+GROUP BY c.customer_id, c.full_name, c.email
+ORDER BY lifetime_value DESC
+LIMIT 10;
+
+-- 5) Which products are at risk of running out of stock soon (based on last 90 days sales)?
+SELECT
+  p.product_id,
+  p.name AS product_name,
+  p.stock_quantity,
+  COALESCE(SUM(oi.quantity), 0) AS units_sold_last_90_days,
+  ROUND(COALESCE(SUM(oi.quantity), 0) / 90, 3) AS avg_units_per_day,
+  CASE
+    WHEN COALESCE(SUM(oi.quantity), 0) = 0 THEN NULL
+    ELSE ROUND(p.stock_quantity / (SUM(oi.quantity) / 90), 1)
+  END AS estimated_days_of_stock_left
+FROM products p
+LEFT JOIN order_items oi ON oi.product_id = p.product_id
+LEFT JOIN orders o ON o.order_id = oi.order_id
+            AND o.status IN ('PAID','SHIPPED','DELIVERED')
+            AND o.created_at >= DATE_SUB(CURDATE(), INTERVAL 90 DAY)
+GROUP BY p.product_id, p.name, p.stock_quantity
+ORDER BY estimated_days_of_stock_left ASC, p.stock_quantity ASC;
