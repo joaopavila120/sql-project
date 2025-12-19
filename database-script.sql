@@ -531,18 +531,6 @@ JOIN orders o ON o.order_id = oi.order_id
 JOIN products p ON p.product_id = oi.product_id;
 
 /* =============================================================================
-   DEMO QUERIES (FOR VIDEO)
-   ============================================================================= */
-
--- Demo invoice for one order
-SELECT * FROM v_invoice_header WHERE invoice_number = 1;
-SELECT * FROM v_invoice_lines  WHERE invoice_number = 1;
-
--- Demo triggers: pick an order and change to PAID, then check logs + stock
-SELECT * FROM transaction_logs WHERE order_id = 27 ORDER BY log_date DESC;
-
-
-/* =============================================================================
    BUSINESS QUESTIONS
    ============================================================================= */
    
