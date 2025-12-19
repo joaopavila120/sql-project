@@ -260,7 +260,7 @@ CREATE TABLE transaction_logs (
 ) ENGINE=InnoDB;
 
 /* =============================================================================
-   SECTION 1.1: CONSTRAINTS / DATA QUALITY (RECOMMENDED)
+   SECTION 1.1: CONSTRAINTS / DATA QUALITY
    ============================================================================= */
 
 -- Prevent duplicate reviews by same customer for same product
@@ -271,7 +271,7 @@ ALTER TABLE reviews
 ALTER TABLE order_items
   ADD CONSTRAINT uq_order_product UNIQUE (order_id, product_id);
 
--- Basic data quality checks (MySQL 8+)
+-- Basic data quality checks
 ALTER TABLE order_items ADD CHECK (quantity > 0);
 ALTER TABLE products    ADD CHECK (price >= 0);
 ALTER TABLE products    ADD CHECK (stock_quantity >= 0);
@@ -287,7 +287,7 @@ CREATE TRIGGER trg_log_order_placement
 AFTER INSERT ON orders
 FOR EACH ROW
 INSERT INTO transaction_logs (order_id, customer_id, action_type, description, log_date)
-VALUES (NEW.order_id, NEW.customer_id, 'ORDER_PLACED', CONCAT('Order placed with status: ', NEW.status), NEW.created_at);
+VALUES (NEW.order_id, NEW.customer_id, 'ORDER_PLACED', CONCAT('Order placed with status: ', NEW.status), NEW.created_at)$$
 
 -- Trigger 2: Log when an order is updated
 CREATE TRIGGER trg_log_order_update
@@ -296,7 +296,7 @@ FOR EACH ROW
 INSERT INTO transaction_logs (order_id, customer_id, action_type, description, log_date)
 SELECT NEW.order_id, NEW.customer_id, 'ORDER_UPDATED', CONCAT('Status changed from ', OLD.status, ' to ', NEW.status), NOW()
 FROM DUAL
-WHERE OLD.status != NEW.status;
+WHERE OLD.status != NEW.status$$
 
 -- Trigger 3: Update stock when order is PAID
 CREATE TRIGGER trg_update_stock_on_paid
@@ -307,7 +307,7 @@ JOIN order_items oi ON oi.product_id = p.product_id
 SET p.stock_quantity = p.stock_quantity - oi.quantity
 WHERE oi.order_id = NEW.order_id
   AND OLD.status != 'PAID' 
-  AND NEW.status = 'PAID';
+  AND NEW.status = 'PAID'$$
   
 DELIMITER ;
 
