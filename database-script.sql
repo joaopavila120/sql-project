@@ -260,7 +260,7 @@ CREATE TABLE transaction_logs (
 ) ENGINE=InnoDB;
 
 /* =============================================================================
-   SECTION 1.1: CONSTRAINTS / DATA QUALITY (RECOMMENDED)
+   SECTION 1.1: CONSTRAINTS / DATA QUALITY
    ============================================================================= */
 
 -- Prevent duplicate reviews by same customer for same product
@@ -271,7 +271,7 @@ ALTER TABLE reviews
 ALTER TABLE order_items
   ADD CONSTRAINT uq_order_product UNIQUE (order_id, product_id);
 
--- Basic data quality checks (MySQL 8+)
+-- Basic data quality checks
 ALTER TABLE order_items ADD CHECK (quantity > 0);
 ALTER TABLE products    ADD CHECK (price >= 0);
 ALTER TABLE products    ADD CHECK (stock_quantity >= 0);
