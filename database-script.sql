@@ -58,7 +58,7 @@ CREATE TABLE addresses (
   postal_code    VARCHAR(20) NOT NULL,
   country_code   CHAR(2) NOT NULL DEFAULT 'PT',
   is_default     BOOLEAN NOT NULL DEFAULT FALSE,
-  FOREIGN KEY (customer_id) REFERENCES customers(customer_id),
+  FOREIGN KEY (customer_id) REFERENCES customers(customer_id) ON DELETE CASCADE,
   FOREIGN KEY (country_code) REFERENCES countries(country_code)
 ) ENGINE=InnoDB;
 
@@ -135,7 +135,7 @@ CREATE TABLE product_attributes (
   product_id     INT NOT NULL,
   attribute_name VARCHAR(50) NOT NULL,
   attribute_value VARCHAR(100) NOT NULL,
-  FOREIGN KEY (product_id) REFERENCES products(product_id)
+  FOREIGN KEY (product_id) REFERENCES products(product_id) ON DELETE CASCADE
 ) ENGINE=InnoDB;
 
 /* -----------------------------------------------------------------------------
@@ -208,7 +208,7 @@ CREATE TABLE order_items (
   product_id     INT NOT NULL,
   quantity       INT NOT NULL,
   unit_price     DECIMAL(10,2) NOT NULL,
-  FOREIGN KEY (order_id)   REFERENCES orders(order_id),
+  FOREIGN KEY (order_id)   REFERENCES orders(order_id) ON DELETE CASCADE,
   FOREIGN KEY (product_id) REFERENCES products(product_id),
   INDEX idx_order_items_order (order_id),
   INDEX idx_order_items_product (product_id)
@@ -232,8 +232,8 @@ CREATE TABLE reviews (
   rating         TINYINT NOT NULL CHECK (rating BETWEEN 1 AND 5),
   comment        TEXT,
   created_at     DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  FOREIGN KEY (product_id) REFERENCES products(product_id),
-  FOREIGN KEY (customer_id)    REFERENCES customers(customer_id),
+  FOREIGN KEY (product_id) REFERENCES products(product_id) ON DELETE CASCADE,
+  FOREIGN KEY (customer_id)    REFERENCES customers(customer_id) ON DELETE CASCADE,
   INDEX idx_reviews_product (product_id)
 ) ENGINE=InnoDB;
 
@@ -464,6 +464,13 @@ INSERT INTO reviews (product_id, customer_id, rating, comment, created_at) VALUE
 
 -- View 1: Invoice header and totals (one row per order)
 CREATE OR REPLACE VIEW v_invoice_header AS
+WITH OrderTotals AS (
+    SELECT
+      order_id,
+      SUM(quantity * unit_price) AS subtotal
+    FROM order_items
+    GROUP BY order_id
+)
 SELECT
   o.order_id AS invoice_number,
   o.created_at AS invoice_date,
@@ -509,14 +516,7 @@ JOIN customers cust ON cust.customer_id = o.customer_id
 JOIN addresses a ON a.address_id = o.address_id
 JOIN countries c ON c.country_code = a.country_code
 LEFT JOIN coupons cp ON cp.coupon_id = o.coupon_id
-JOIN (
-    -- Order totals 
-    SELECT
-      order_id,
-      SUM(quantity * unit_price) AS subtotal
-    FROM order_items
-    GROUP BY order_id
-) ot ON ot.order_id = o.order_id;
+JOIN OrderTotals ot ON ot.order_id = o.order_id;
 
 -- View 2: Invoice detail lines 
 CREATE OR REPLACE VIEW v_invoice_lines AS
@@ -633,20 +633,26 @@ ORDER BY lifetime_value DESC
 LIMIT 10;
 
 -- 5) Which products are at risk of running out of stock soon (based on last 90 days sales)?
+WITH RecentSales AS (
+    SELECT
+        oi.product_id,
+        SUM(oi.quantity) AS units_sold_last_90_days
+    FROM order_items oi
+    JOIN orders o ON o.order_id = oi.order_id
+    WHERE o.status IN ('PAID','SHIPPED','DELIVERED')
+      AND o.created_at >= DATE_SUB(CURDATE(), INTERVAL 90 DAY)
+    GROUP BY oi.product_id
+)
 SELECT
   p.product_id,
   p.name AS product_name,
   p.stock_quantity,
-  COALESCE(SUM(oi.quantity), 0) AS units_sold_last_90_days,
-  ROUND(COALESCE(SUM(oi.quantity), 0) / 90, 3) AS avg_units_per_day,
+  COALESCE(rs.units_sold_last_90_days, 0) AS units_sold_last_90_days,
+  ROUND(COALESCE(rs.units_sold_last_90_days, 0) / 90, 3) AS avg_units_per_day,
   CASE
-    WHEN COALESCE(SUM(oi.quantity), 0) = 0 THEN NULL
-    ELSE ROUND(p.stock_quantity / (SUM(oi.quantity) / 90), 1)
+    WHEN COALESCE(rs.units_sold_last_90_days, 0) = 0 THEN NULL
+    ELSE ROUND(p.stock_quantity / (rs.units_sold_last_90_days / 90), 1)
   END AS estimated_days_of_stock_left
 FROM products p
-LEFT JOIN order_items oi ON oi.product_id = p.product_id
-LEFT JOIN orders o ON o.order_id = oi.order_id
-            AND o.status IN ('PAID','SHIPPED','DELIVERED')
-            AND o.created_at >= DATE_SUB(CURDATE(), INTERVAL 90 DAY)
-GROUP BY p.product_id, p.name, p.stock_quantity
+LEFT JOIN RecentSales rs ON rs.product_id = p.product_id
 ORDER BY estimated_days_of_stock_left ASC, p.stock_quantity ASC;
