@@ -644,3 +644,60 @@ SELECT
 FROM products p
 LEFT JOIN RecentSales rs ON rs.product_id = p.product_id
 ORDER BY estimated_days_of_stock_left ASC, p.stock_quantity ASC;
+
+/* =============================================================================
+   VIDEO TEST PART
+   ============================================================================= */
+
+-- -- TEST 1: Verify Order Placement Logging (trg_log_order_placement)
+-- -- Step 1: Insert a new test order
+-- SELECT * FROM orders WHERE order_id = (SELECT MAX(order_id) FROM orders);
+
+-- INSERT INTO orders (customer_id, address_id, status, payment_method, created_at)
+-- VALUES (1, 1, 'PENDING', 'CREDIT_CARD', NOW());
+
+-- -- Step 2: Check the tables (Orders and Logs)
+-- SELECT * FROM orders WHERE order_id = (SELECT MAX(order_id) FROM orders);
+-- SELECT * FROM transaction_logs WHERE order_id = (SELECT MAX(order_id) FROM orders) ORDER BY log_date DESC;
+
+
+-- -- TEST 2: Verify Order Status Update Logging (trg_log_order_update)
+-- -- Step 1: Update the status of the most recent order
+-- UPDATE orders 
+-- SET status = 'SHIPPED' 
+-- WHERE order_id = 31;
+
+-- -- Step 2: Check the tables (Orders and Logs)
+-- SELECT * FROM orders WHERE order_id = (SELECT MAX(order_id) FROM orders);
+-- SELECT * FROM transaction_logs WHERE order_id = (SELECT MAX(order_id) FROM orders) ORDER BY log_date DESC;
+
+
+-- -- TEST 3: Verify Stock Update on Payment (trg_update_stock_on_paid)
+-- -- Step 1: Check initial stock for Product 1 (Delta Gold Blend)
+-- SELECT product_id, name, stock_quantity AS 'Initial Stock' 
+-- FROM products WHERE product_id = 1;
+
+-- -- Step 2: Create a new PENDING order for Product 1 (Quantity: 5)
+-- INSERT INTO orders (customer_id, address_id, status, payment_method, created_at)
+-- VALUES (2, 2, 'PENDING', 'PAYPAL', NOW());
+
+-- INSERT INTO order_items (order_id, product_id, quantity, unit_price)
+-- VALUES ((SELECT MAX(order_id) FROM orders), 1, 5, 15.50);
+
+-- -- Step 3: Update status to PAID. This should trigger the stock update.
+-- UPDATE orders 
+-- SET status = 'PAID' 
+-- WHERE order_id = 32;
+
+-- -- Step 4: Verify stock has decreased by 5
+-- SELECT product_id, name, stock_quantity AS 'Stock After Sale' 
+-- FROM products WHERE product_id = 1;
+
+
+-- -- Step 7: Verify Invoice 
+-- SELECT * FROM v_invoice_header WHERE invoice_number = 1;
+
+-- -- Step 8: Verify Invoice 
+-- SELECT * FROM v_invoice_lines WHERE invoice_number = 1
+
+
